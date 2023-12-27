@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/daimaxiaofeng/user-management/handlers"
+	"github.com/daimaxiaofeng/user-management/middlewares"
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,6 +15,7 @@ func Init() *gin.Engine {
 	// Disable Console Color
 	// gin.DisableConsoleColor()
 	r := gin.Default()
+	r.Use(middlewares.Cors)
 
 	r.POST("/register", handlers.RegisterHandler)
 
