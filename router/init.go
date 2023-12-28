@@ -18,6 +18,7 @@ func Init() *gin.Engine {
 	r.Use(middlewares.Cors)
 
 	r.POST("/register", handlers.RegisterHandler)
+	r.POST("/checkUsername", handlers.CheckUsernameHandler)
 
 	return r
 }

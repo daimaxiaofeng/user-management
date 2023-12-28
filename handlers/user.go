@@ -41,19 +41,26 @@ func (u User) verifyPassword(password string) bool {
 	return err == nil
 }
 
+func checkUsernameIsLegal(username *string) (bool, error) {
+	if match, _ := regexp.MatchString("^[a-zA-Z0-9]+$", *username); !match {
+		return false, fmt.Errorf("Username can only contain letters and numbers")
+	}
+	*username = strings.ToLower(strings.TrimSpace(*username))
+	if !unicode.IsLetter(rune((*username)[0])) {
+		return false, fmt.Errorf("Username must start with a letter")
+	}
+	if len(*username) < 4 || len(*username) > 16 {
+		return false, fmt.Errorf("Username should be between 5 - 16 characters in length")
+	}
+	return true, nil
+}
+
 func (u *User) checkUserInfoIsLegal() error {
-	if match, _ := regexp.MatchString("^[a-zA-Z0-9]+$", u.Username); !match {
-		return fmt.Errorf("Username can only contain letters and numbers")
+	if _, err := checkUsernameIsLegal(&u.Username); err != nil {
+		return err
 	}
-	u.Username = strings.ToLower(strings.TrimSpace(u.Username))
-	if !unicode.IsLetter(rune(u.Username[0])) {
-		return fmt.Errorf("Username must start with a letter")
-	}
-	if len(u.Username) < 5 || len(u.Username) > 16 {
-		return fmt.Errorf("Username should be between 5 - 16 characters in length")
-	}
-	if len(u.Password) < 5 || len(u.Password) > 16 {
-		return fmt.Errorf("Password should be between 5 - 16 characters in length")
+	if len(u.Password) < 8 || len(u.Password) > 32 {
+		return fmt.Errorf("Password should be between 8 - 32 characters in length")
 	}
 	if u.Role != "user" && u.Role != "" {
 		return fmt.Errorf("No permission to create roles other than user")
@@ -66,11 +73,18 @@ func (u *User) checkUserInfoIsLegal() error {
 	return nil
 }
 
-func (u *User) checkUsernameExists() (bool, error) {
+func (u *User) Insert() error {
+	query := fmt.Sprintf(
+		"INSERT INTO %s (username, password, registration_date, points_balance, role) VALUES (?, ?, ?, ?, ?)", USERTABLE)
+	_, err := utils.DB.Exec(query, u.Username, u.Password, u.Registration_date, u.Points_balance, u.Role)
+	return err
+}
+
+func checkUsernameExists(username string) (bool, error) {
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE username = ?", USERTABLE)
 
 	var count int
-	rows, err := utils.DB.Query(query, u.Username)
+	rows, err := utils.DB.Query(query, username)
 	if err != nil {
 		return false, err
 	}
@@ -83,13 +97,6 @@ func (u *User) checkUsernameExists() (bool, error) {
 	}
 
 	return count > 0, nil
-}
-
-func (u *User) Insert() error {
-	query := fmt.Sprintf(
-		"INSERT INTO %s (username, password, registration_date, points_balance, role) VALUES (?, ?, ?, ?, ?)", USERTABLE)
-	_, err := utils.DB.Exec(query, u.Username, u.Password, u.Registration_date, u.Points_balance, u.Role)
-	return err
 }
 
 func RegisterHandler(c *gin.Context) {
@@ -105,7 +112,7 @@ func RegisterHandler(c *gin.Context) {
 		return
 	}
 
-	if exists, err := user.checkUsernameExists(); err != nil {
+	if exists, err := checkUsernameExists(user.Username); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	} else if exists {
@@ -124,4 +131,25 @@ func RegisterHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "User registered successfully"})
+}
+
+func CheckUsernameHandler(c *gin.Context) {
+	data := struct {
+		Username string `json:"username"`
+	}{}
+	if err := c.ShouldBindJSON(&data); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := checkUsernameIsLegal(&data.Username); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if exists, err := checkUsernameExists(data.Username); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	} else if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
+		return
+	}
 }
